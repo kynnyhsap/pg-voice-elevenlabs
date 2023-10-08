@@ -1,6 +1,29 @@
-import os
 from elevenlabs import generate, save, set_api_key, Voice, VoiceSettings
 from dotenv import load_dotenv
+import os
+import nltk
+import subprocess
+from nltk.tokenize import sent_tokenize
+
+nltk.download('punkt')
+
+def text_to_chunks(text, max_length=5000):
+    sentences = sent_tokenize(text)
+    chunks = []
+    current_chunk = ''
+    
+    for sentence in sentences:
+        if len(current_chunk) + len(sentence) > max_length:
+            chunks.append(current_chunk)
+            current_chunk = sentence
+        else:
+            current_chunk += ' ' + sentence
+    
+    if current_chunk:  # Add any remaining content
+        chunks.append(current_chunk.strip())
+        
+    return chunks
+
 
 load_dotenv()
 
@@ -15,30 +38,42 @@ voice = Voice(
     settings=voice_settings
 )
 
+# voice = clone(
+#     name="Paul Graham",
+#     files=list(map(lambda x: './samples/short/' + x, os.listdir('./samples/short'))),
+#     settings=voice_settings
+# )
+
 def generate_essay_voiceover(title):
-
-    # voice = clone(
-    #     name="Paul Graham",
-    #     files=list(map(lambda x: './samples/short/' + x, os.listdir('./samples/short'))),
-    #     settings=voice_settings
-    # )
-
-
+    print(f"Generating voiceover for '{title}' Essay!\n")
 
     with open(f'./essays/{title}.txt', 'r') as file:
         text = file.read()
 
-        audio = generate(
-            text=text,
-            voice=voice,
-            model="eleven_multilingual_v2"
-        )
+        chunks = text_to_chunks(text, 200) # ElevenLabs API currently has a limitation of 5000 characters per audio generation
 
-        save(audio, f'./voiced/{title}.mp3')
+        for i, chunk in enumerate(chunks):
+            print(f"Generating audio for chunk # {i+1}...")
+            print(f"\n{'-'*40}\n", chunk, f"\n{'-'*40}\n")
+            
+            audio_chunk = generate(
+                text=chunk,
+                voice=voice,
+                model="eleven_multilingual_v2"
+            )
+
+            save(audio_chunk, f'./voiced/tmp/{i+1}.mp3')
+
+        # Merge all the chunks into a single audio file using ffmpeg
+        concat = "concat:" + "|".join(map(lambda x: f"./voiced/tmp/{x+1}.mp3", range(len(chunks))))
+        command = ["ffmpeg", "-i", f'"{concat}"', "-c", "copy", f"./voiced/{title}.mp3"]
+        subprocess.run(command)
+
+        subprocess.run(["rm", "-rf", "./voiced/tmp"])
 
 
 
 # Change the title of the essay to generate a voiceover for it
 title = "Hackers And Painters"
 
-# generate_essay_voiceover(title)
+generate_essay_voiceover(title)
