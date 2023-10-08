@@ -7,6 +7,11 @@ from nltk.tokenize import sent_tokenize
 
 nltk.download('punkt')
 
+load_dotenv()
+
+set_api_key(os.environ.get("ELEVEN_LABS_API_KEY"))
+
+
 def text_to_chunks(text, max_length=5000):
     sentences = sent_tokenize(text)
     chunks = []
@@ -24,10 +29,6 @@ def text_to_chunks(text, max_length=5000):
         
     return chunks
 
-
-load_dotenv()
-
-set_api_key(os.environ.get("ELEVEN_LABS_API_KEY"))
 
 voice_settings = VoiceSettings(stability=0.4, similarity_boost=0.8, style=0.1, use_speaker_boost=True)
 
@@ -50,8 +51,9 @@ def generate_essay_voiceover(title):
     with open(f'./essays/{title}.txt', 'r') as file:
         text = file.read()
 
-        chunks = text_to_chunks(text, 200) # ElevenLabs API currently has a limitation of 5000 characters per audio generation
+        chunks = text_to_chunks(text, 5000) # ElevenLabs API currently has a limitation of 5000 characters per audio generation
 
+        # generate audio for each chunk and save it in tmp folder
         for i, chunk in enumerate(chunks):
             print(f"Generating audio for chunk # {i+1}...")
             print(f"\n{'-'*40}\n", chunk, f"\n{'-'*40}\n")
@@ -62,14 +64,20 @@ def generate_essay_voiceover(title):
                 model="eleven_multilingual_v2"
             )
 
-            save(audio_chunk, f'./voiced/tmp/{i+1}.mp3')
+            save(audio_chunk, f'./tmp/{i+1}.mp3')
 
-        # Merge all the chunks into a single audio file using ffmpeg
-        concat = "concat:" + "|".join(map(lambda x: f"./voiced/tmp/{x+1}.mp3", range(len(chunks))))
-        command = ["ffmpeg", "-i", f'"{concat}"', "-c", "copy", f"./voiced/{title}.mp3"]
-        subprocess.run(command)
 
-        subprocess.run(["rm", "-rf", "./voiced/tmp"])
+        # concatenating all the chunks into a single audio file
+        with open('tmp.txt', 'w') as tmp_file:
+            tmp_file.write("\n".join(map(lambda x: f"file './tmp/{x+1}.mp3'", range(len(chunks)))))
+
+        subprocess.run(["ffmpeg", "-f", "concat", "-safe", "0", "-i", "tmp.txt", "-c", "copy", f"./voiced/{title}.mp3"])
+
+        # removing the tmp folder and tmp.txt file
+        os.remove('tmp.txt')
+        subprocess.run(["rm", "-rf", "./tmp"])
+
+    print(f"\n\nVoiceover for '{title}' Essay generated successfully!\n")
 
 
 
